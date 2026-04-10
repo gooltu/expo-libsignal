@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "expo-libsignal": ["../src/index"],
+      "expo-libsignal/*": ["../src/*"]
+    }
+  }
+}
