@@ -9,12 +9,21 @@
     "clean": "expo-module clean",
     "lint": "expo-module lint",
     "test": "expo-module test",
-    "prepare": "expo-module prepare",
+    "build:plugin": "tsc --project plugin/tsconfig.json",    
+    "prepare": "npm run build:plugin && npm run build",
+    "publish": "expo-module publish",
     "prepublishOnly": "expo-module prepublishOnly",
     "expo-module": "expo-module",
     "open:ios": "xed example/ios",
     "open:android": "open -a \"Android Studio\" example/android"
   },
+  "files":[
+    "build",
+    "android",
+    "ios",
+    "app.plugin.js",
+    "plugin/build"
+  ],
   "keywords": [
     "react-native",
     "expo",
@@ -28,11 +37,13 @@
   "author": "Mayukh Chakraborty <49320971+gooltu@users.noreply.github.com> (https://github.com/gooltu)",
   "license": "MIT",
   "homepage": "https://github.com/gooltu/expo-libsignal#readme",
-  "dependencies": {},
+  "dependencies": {
+    "@expo/config-plugins": "^55.0.8"
+  },
   "devDependencies": {
     "@types/react": "~19.1.1",
-    "expo-module-scripts": "^55.0.2",
     "expo": "^55.0.13",
+    "expo-module-scripts": "^55.0.2",
     "react-native": "0.82.1"
   },
   "peerDependencies": {

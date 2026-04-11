@@ -2,49 +2,37 @@ package expo.modules.libsignal
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import java.net.URL
-
+import org.signal.libsignal.protocol.IdentityKeyPair
+import android.util.Base64
 class ExpoLibsignalModule : Module() {
-  // Each module class must implement the definition function. The definition consists of components
-  // that describes the module's functionality and behavior.
-  // See https://docs.expo.dev/modules/module-api for more details about available components.
   override fun definition() = ModuleDefinition {
-    // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
-    // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
-    // The module will be accessible from `requireNativeModule('ExpoLibsignal')` in JavaScript.
     Name("ExpoLibsignal")
 
-    // Defines constant property on the module.
-    Constant("PI") {
-      Math.PI
-    }
-
-    // Defines event names that the module can send to JavaScript.
-    Events("onChange")
-
-    // Defines a JavaScript synchronous function that runs the native code on the JavaScript thread.
-    Function("hello") {
-      "Hello world! 👋"
-    }
-
-    // Defines a JavaScript function that always returns a Promise and whose native code
-    // is by default dispatched on the different thread than the JavaScript runtime runs on.
-    AsyncFunction("setValueAsync") { value: String ->
-      // Send an event to JavaScript.
-      sendEvent("onChange", mapOf(
-        "value" to value
-      ))
-    }
-
-    // Enables the module to be used as a native view. Definition components that are accepted as part of
-    // the view definition: Prop, Events.
-    View(ExpoLibsignalView::class) {
-      // Defines a setter for the `url` prop.
-      Prop("url") { view: ExpoLibsignalView, url: URL ->
-        view.webView.loadUrl(url.toString())
-      }
-      // Defines an event that the view can send to JavaScript.
-      Events("onLoad")
-    }
+      AsyncFunction("generateIdentityKeyPair", this@ExpoLibsignalModule::generateIdentityKeyPair)
+//      AsyncFunction("generateRegistrationId", this@ExpoLibsignalModule::generateRegistrationId)
+//      AsyncFunction("generatePreKeys", this@ExpoLibsignalModule::generatePreKeys)
+//      AsyncFunction("generateSignedPreKey", this@ExpoLibsignalModule::generateSignedPreKey)
   }
+
+    private fun generateIdentityKeyPair(): Map<String, Any>{
+
+        // 1. Generate the key pair via libsignal-client
+        val keyPair: IdentityKeyPair = IdentityKeyPair.generate()
+
+        // 2. Serialize the keys into raw ByteArrays
+        val publicKeyBytes: ByteArray = keyPair.publicKey.serialize()
+        val privateKeyBytes: ByteArray = keyPair.privateKey.serialize()
+
+        // 3. Encode to Base64 strings to send over the JS Bridge
+        val publicKeyBase64 = Base64.encodeToString(publicKeyBytes, Base64.NO_WRAP)
+        val privateKeyBase64 = Base64.encodeToString(privateKeyBytes, Base64.NO_WRAP)
+
+        // 4. Return as a Kotlin Map (Expo automatically converts this to a JS Object)
+        return mapOf(
+            "publicKey" to publicKeyBase64,
+            "privateKey" to privateKeyBase64
+        )
+
+    }
+
 }

@@ -16,3 +16,10 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+    implementation 'com.google.crypto.tink:tink-android:1.21.0'
+    implementation "org.signal:libsignal-client:0.86.5"
+    implementation "org.signal:libsignal-android:0.86.5"
+
+}
