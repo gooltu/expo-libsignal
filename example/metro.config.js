@@ -22,6 +22,9 @@ config.resolver.extraNodeModules = {
   'expo-libsignal': '..',
 };
 
+// Add 'wasm' to the list of supported asset extensions
+config.resolver.assetExts.push('wasm');
+
 config.watchFolders = [path.resolve(__dirname, '..')];
 
 config.transformer.getTransformOptions = async () => ({

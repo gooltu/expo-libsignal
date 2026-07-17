@@ -33,7 +33,7 @@ export interface IdentityKeyPair {
 
 // Represents an encrypted message
 export interface CiphertextMessage {
-  type: number;       // 2 for PreKeySignalMessage, 3 for SignalMessage
+  type: number;       // 2 for SignalMessage, 3 for PreKeySignalMessage
   body: string;       // Base64 encoded ciphertext
 }
 
@@ -53,10 +53,9 @@ export interface PreKeyRecord {
   id: number;
   publicKey: string;  // Base64 encoded public key
   privateKey: string; // Base64 encoded private key
-  
+
   // Optional: The raw protobuf serialization of the entire record.
-  // Useful if you are letting JS handle storage (not recommended, but common)
-  serialized?: string; 
+  serialized?: string;
 }
 
 // Represents the Signed PreKey generated on the device
@@ -66,20 +65,7 @@ export interface SignedPreKeyRecord {
   privateKey: string; // Base64 encoded private key
   signature: string;  // Base64 encoded signature (signed by Identity Private Key)
   timestamp: number;  // Epoch time of when this key was generated
-  
+
   // Optional: The raw protobuf serialization
-  serialized?: string; 
-}
-
-
-export interface CiphertextMessage {
-  // The type of message dictates how the receiver processes it.
-  // 3 = PreKeySignalMessage (Used ONLY for the very first message to establish the session)
-  // 2 = SignalMessage (Standard message used for all subsequent communication)
-  type: number; 
-  
-  // The actual encrypted payload.
-  // For Type 3, this includes the sender's public keys in the header.
-  // For Type 2, this is just the raw encrypted ciphertext.
-  body: string; // Base64 encoded ciphertext string
+  serialized?: string;
 }
