@@ -18,7 +18,7 @@ public class ExpoLibsignalModule: Module {
 
     AsyncFunction("generateIdentityKeyPair") { () throws -> [String: String] in
       let kp = IdentityKeyPair.generate()
-      try self.store.storeLocalIdentityKeyPair(publicKey: kp.publicKey.publicKey, privateKey: kp.privateKey)
+      try self.store.storeLocalIdentityKeyPair(publicKey: kp.publicKey, privateKey: kp.privateKey)
       return [
         "publicKey": Data(kp.publicKey.serialize()).base64EncodedString()
       ]
@@ -92,11 +92,16 @@ public class ExpoLibsignalModule: Module {
 
     // ── Session + Crypto ───────────────────────────────────────────────────
 
-    AsyncFunction("processPreKeyBundle") { (address: [String: Any], bundle: [String: Any]) throws in
+    AsyncFunction("processPreKeyBundle") { (address: [String: Any], bundle: [String: Any], ourAddress: [String: Any]) throws in
       guard let name     = address["name"] as? String,
             let deviceId = address["deviceId"] as? Int else {
         throw NSError(domain: "ExpoLibsignal", code: 7,
                       userInfo: [NSLocalizedDescriptionKey: "Invalid ProtocolAddress"])
+      }
+      guard let ourName     = ourAddress["name"] as? String,
+            let ourDeviceId = ourAddress["deviceId"] as? Int else {
+        throw NSError(domain: "ExpoLibsignal", code: 7,
+                      userInfo: [NSLocalizedDescriptionKey: "Invalid ourAddress"])
       }
       guard let identityKeyB64      = bundle["identityKey"] as? String,
             let identityKeyData     = Data(base64Encoded: identityKeyB64),
@@ -117,35 +122,78 @@ public class ExpoLibsignalModule: Module {
         return try PublicKey(Array(data))
       }()
 
-      let pkBundle = try LibSignalClient.PreKeyBundle(
-        registrationId:        UInt32(registrationId),
-        deviceId:              UInt32(deviceId),
-        prekeyId:              preKeyId,
-        prekey:                preKeyPub,
-        signedPrekeyId:        UInt32(signedPreKeyId),
-        signedPrekey:          try PublicKey(Array(signedPreKeyPubData)),
-        signedPrekeySignature: Array(signedPreKeySigData),
-        identity:              try IdentityKey(publicKey: PublicKey(Array(identityKeyData)))
-      )
+      guard let kyberPreKeyIdRaw  = bundle["kyberPreKeyId"] as? Int,
+            let kyberPreKeyPubB64 = bundle["kyberPreKeyPublic"] as? String,
+            let kyberPreKeyPubData = Data(base64Encoded: kyberPreKeyPubB64),
+            let kyberPreKeySigB64 = bundle["kyberPreKeySignature"] as? String,
+            let kyberPreKeySigData = Data(base64Encoded: kyberPreKeySigB64) else {
+        throw NSError(domain: "ExpoLibsignal", code: 8,
+                      userInfo: [NSLocalizedDescriptionKey: "Missing Kyber pre-key fields in PreKeyBundle"])
+      }
+      let kyberPreKeyPub = try KEMPublicKey(Array(kyberPreKeyPubData))
+      let kyberPreKeyId  = UInt32(kyberPreKeyIdRaw)
 
-      let remoteAddress = try ProtocolAddress(name, deviceId: UInt32(deviceId))
+      let identityKey    = try IdentityKey(publicKey: PublicKey(Array(identityKeyData)))
+      let signedPrekey   = try PublicKey(Array(signedPreKeyPubData))
+
+      let pkBundle: LibSignalClient.PreKeyBundle
+      if let preKeyId = preKeyId, let preKeyPub = preKeyPub {
+        pkBundle = try LibSignalClient.PreKeyBundle(
+          registrationId:        UInt32(registrationId),
+          deviceId:              UInt32(deviceId),
+          prekeyId:              preKeyId,
+          prekey:                preKeyPub,
+          signedPrekeyId:        UInt32(signedPreKeyId),
+          signedPrekey:          signedPrekey,
+          signedPrekeySignature: Array(signedPreKeySigData),
+          identity:              identityKey,
+          kyberPrekeyId:         kyberPreKeyId,
+          kyberPrekey:           kyberPreKeyPub,
+          kyberPrekeySignature:  Array(kyberPreKeySigData)
+        )
+      } else {
+        pkBundle = try LibSignalClient.PreKeyBundle(
+          registrationId:        UInt32(registrationId),
+          deviceId:              UInt32(deviceId),
+          signedPrekeyId:        UInt32(signedPreKeyId),
+          signedPrekey:          signedPrekey,
+          signedPrekeySignature: Array(signedPreKeySigData),
+          identity:              identityKey,
+          kyberPrekeyId:         kyberPreKeyId,
+          kyberPrekey:           kyberPreKeyPub,
+          kyberPrekeySignature:  Array(kyberPreKeySigData)
+        )
+      }
+
+      let remoteAddress = try ProtocolAddress(name: name, deviceId: UInt32(deviceId))
+      let localAddress  = try ProtocolAddress(name: ourName, deviceId: UInt32(ourDeviceId))
       try processPreKeyBundle(pkBundle, for: remoteAddress,
-                              sessionStore: self.store, identityStore: self.store)
+                              ourAddress: localAddress,
+                              sessionStore: self.store, identityStore: self.store,
+                              context: NullContext())
     }
 
-    AsyncFunction("encryptMessage") { (address: [String: Any], plaintext: String) throws -> [String: Any] in
+    AsyncFunction("encryptMessage") { (address: [String: Any], plaintext: String, ourAddress: [String: Any]) throws -> [String: Any] in
       guard let name     = address["name"] as? String,
             let deviceId = address["deviceId"] as? Int else {
         throw NSError(domain: "ExpoLibsignal", code: 7,
                       userInfo: [NSLocalizedDescriptionKey: "Invalid ProtocolAddress"])
       }
+      guard let ourName     = ourAddress["name"] as? String,
+            let ourDeviceId = ourAddress["deviceId"] as? Int else {
+        throw NSError(domain: "ExpoLibsignal", code: 7,
+                      userInfo: [NSLocalizedDescriptionKey: "Invalid ourAddress"])
+      }
       let plaintextData = Data(base64Encoded: plaintext) ?? Data(plaintext.utf8)
-      let remoteAddress = try ProtocolAddress(name, deviceId: UInt32(deviceId))
+      let remoteAddress = try ProtocolAddress(name: name, deviceId: UInt32(deviceId))
+      let localAddress  = try ProtocolAddress(name: ourName, deviceId: UInt32(ourDeviceId))
       let ciphertext = try signalEncrypt(
         message: Array(plaintextData),
         for: remoteAddress,
+        localAddress: localAddress,
         sessionStore: self.store,
-        identityStore: self.store
+        identityStore: self.store,
+        context: NullContext()
       )
       return [
         "type": ciphertext.messageType.rawValue,
@@ -153,11 +201,16 @@ public class ExpoLibsignalModule: Module {
       ]
     }
 
-    AsyncFunction("decryptMessage") { (address: [String: Any], ciphertext: [String: Any]) throws -> String in
+    AsyncFunction("decryptMessage") { (address: [String: Any], ciphertext: [String: Any], ourAddress: [String: Any]) throws -> String in
       guard let name     = address["name"] as? String,
             let deviceId = address["deviceId"] as? Int else {
         throw NSError(domain: "ExpoLibsignal", code: 7,
                       userInfo: [NSLocalizedDescriptionKey: "Invalid ProtocolAddress"])
+      }
+      guard let ourName     = ourAddress["name"] as? String,
+            let ourDeviceId = ourAddress["deviceId"] as? Int else {
+        throw NSError(domain: "ExpoLibsignal", code: 7,
+                      userInfo: [NSLocalizedDescriptionKey: "Invalid ourAddress"])
       }
       guard let msgType  = ciphertext["type"] as? Int,
             let bodyB64  = ciphertext["body"] as? String,
@@ -165,27 +218,33 @@ public class ExpoLibsignalModule: Module {
         throw NSError(domain: "ExpoLibsignal", code: 10,
                       userInfo: [NSLocalizedDescriptionKey: "Invalid CiphertextMessage"])
       }
-      let remoteAddress = try ProtocolAddress(name, deviceId: UInt32(deviceId))
-      let plaintextBytes: [UInt8]
+      let remoteAddress = try ProtocolAddress(name: name, deviceId: UInt32(deviceId))
+      let localAddress  = try ProtocolAddress(name: ourName, deviceId: UInt32(ourDeviceId))
+      let plaintext: Data
       switch msgType {
       case 3:
         let msg = try PreKeySignalMessage(bytes: Array(bodyData))
-        plaintextBytes = try signalDecryptPreKey(
+        plaintext = try signalDecryptPreKey(
           message: msg, from: remoteAddress,
+          localAddress: localAddress,
           sessionStore: self.store, identityStore: self.store,
-          preKeyStore: self.store, signedPreKeyStore: self.store
+          preKeyStore: self.store, signedPreKeyStore: self.store,
+          kyberPreKeyStore: self.store,
+          context: NullContext()
         )
       case 2:
         let msg = try SignalMessage(bytes: Array(bodyData))
-        plaintextBytes = try signalDecrypt(
+        plaintext = try signalDecrypt(
           message: msg, from: remoteAddress,
-          sessionStore: self.store, identityStore: self.store
+          to: localAddress,
+          sessionStore: self.store, identityStore: self.store,
+          context: NullContext()
         )
       default:
         throw NSError(domain: "ExpoLibsignal", code: 11,
                       userInfo: [NSLocalizedDescriptionKey: "Unknown message type: \(msgType)"])
       }
-      return Data(plaintextBytes).base64EncodedString()
+      return plaintext.base64EncodedString()
     }
   }
 }

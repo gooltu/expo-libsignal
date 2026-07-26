@@ -3,7 +3,7 @@ import CryptoKit
 import LibSignalClient
 import Security
 
-class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, SessionStore {
+class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, SessionStore, KyberPreKeyStore {
 
     private let defaults = UserDefaults(suiteName: "expo.libsignal.store")!
     private let masterKey: SymmetricKey
@@ -80,19 +80,18 @@ class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, 
         }
         let pubKey  = try PublicKey(Array(decryptData(pubEnc)))
         let privKey = try PrivateKey(Array(decryptData(privEnc)))
-        return IdentityKeyPair(publicKey: IdentityKey(publicKey: pubKey), privateKey: privKey)
+        return IdentityKeyPair(publicKey: pubKey, privateKey: privKey)
     }
 
     func localRegistrationId(context: StoreContext) throws -> UInt32 {
         return UInt32(defaults.integer(forKey: "registration_id"))
     }
 
-    func saveIdentity(_ identity: IdentityKey, for address: ProtocolAddress, context: StoreContext) throws -> Bool {
+    func saveIdentity(_ identity: IdentityKey, for address: ProtocolAddress, context: StoreContext) throws -> IdentityChange {
         let key = "identity_\(address.name)_\(address.deviceId)"
-        let existingEnc = defaults.string(forKey: key)
+        let hadExisting = defaults.string(forKey: key) != nil
         defaults.set(try encryptData(Data(identity.publicKey.serialize())), forKey: key)
-        // AES-GCM nonce is random so ciphertexts always differ; return true if key was already stored
-        return existingEnc != nil
+        return hadExisting ? .replacedExisting : .newOrUnchanged
     }
 
     func isTrustedIdentity(_ identity: IdentityKey, for address: ProtocolAddress, direction: Direction, context: StoreContext) throws -> Bool {
@@ -119,7 +118,7 @@ class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, 
     }
 
     func storePreKey(_ record: LibSignalClient.PreKeyRecord, id: UInt32, context: StoreContext) throws {
-        defaults.set(try encryptData(Data(try record.serialize())), forKey: "prekey_\(id)")
+        defaults.set(try encryptData(Data(record.serialize())), forKey: "prekey_\(id)")
     }
 
     func removePreKey(id: UInt32, context: StoreContext) throws {
@@ -136,7 +135,7 @@ class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, 
     }
 
     func storeSignedPreKey(_ record: LibSignalClient.SignedPreKeyRecord, id: UInt32, context: StoreContext) throws {
-        defaults.set(try encryptData(Data(try record.serialize())), forKey: "signed_prekey_\(id)")
+        defaults.set(try encryptData(Data(record.serialize())), forKey: "signed_prekey_\(id)")
     }
 
     // ── Session Store ──────────────────────────────────────────────────────
@@ -148,9 +147,30 @@ class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, 
         return try SessionRecord(bytes: Array(decryptData(enc)))
     }
 
+    func loadExistingSessions(for addresses: [ProtocolAddress], context: StoreContext) throws -> [SessionRecord] {
+        return try addresses.compactMap { try loadSession(for: $0, context: context) }
+    }
+
     func storeSession(_ record: SessionRecord, for address: ProtocolAddress, context: StoreContext) throws {
-        defaults.set(try encryptData(Data(try record.serialize())),
+        defaults.set(try encryptData(Data(record.serialize())),
                      forKey: "session_\(address.name)_\(address.deviceId)")
+    }
+
+    // ── Kyber Pre Key Store ────────────────────────────────────────────────
+
+    func loadKyberPreKey(id: UInt32, context: StoreContext) throws -> KyberPreKeyRecord {
+        guard let enc = defaults.string(forKey: "kyber_prekey_\(id)") else {
+            throw SignalError.invalidKeyIdentifier("No Kyber pre-key \(id)")
+        }
+        return try KyberPreKeyRecord(bytes: Array(decryptData(enc)))
+    }
+
+    func storeKyberPreKey(_ record: KyberPreKeyRecord, id: UInt32, context: StoreContext) throws {
+        defaults.set(try encryptData(Data(record.serialize())), forKey: "kyber_prekey_\(id)")
+    }
+
+    func markKyberPreKeyUsed(id: UInt32, signedPreKeyId: UInt32, baseKey: PublicKey, context: StoreContext) throws {
+        defaults.removeObject(forKey: "kyber_prekey_\(id)")
     }
 
     // Helper used by hasSession
