@@ -1,7 +1,7 @@
 {
   "name": "expo-libsignal",
   "version": "0.1.0",
-  "description": "My new module",
+  "description": "Expo native module wrapping the Signal Protocol (libsignal) for end-to-end encrypted messaging on iOS and Android.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "scripts": {
@@ -20,9 +20,12 @@
   "files": [
     "build",
     "android",
+    "!android/build",
+    "!android/.cxx",
     "ios",
     "app.plugin.js",
-    "plugin/build"
+    "plugin/build",
+    "expo-module.config.json"
   ],
   "keywords": [
     "react-native",

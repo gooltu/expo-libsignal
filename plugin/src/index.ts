@@ -1,4 +1,10 @@
-import { ConfigPlugin, withProjectBuildGradle, withAppBuildGradle } from '@expo/config-plugins';
+import {
+  ConfigPlugin,
+  withProjectBuildGradle,
+  withAppBuildGradle,
+  withPodfile,
+  withPodfileProperties,
+} from '@expo/config-plugins';
 
 const withSignalMavenRepo: ConfigPlugin = (config) => {
   return withProjectBuildGradle(config, async (config) => {
@@ -47,9 +53,55 @@ const withSignalCoreLibraryDesugaring: ConfigPlugin = (config) => {
   });
 };
 
+// LibSignalClient (the iOS/Swift pod) is not published to the CocoaPods trunk
+// spec repo, so a plain `s.dependency 'LibSignalClient'` in
+// ios/ExpoLibsignal.podspec can never resolve on its own — CocoaPods needs an
+// explicit git-based source, plus the matching prebuilt-binary checksum,
+// declared directly in the consuming app's Podfile. Version/checksum pinned
+// to the same 0.86.5 release used by Android's org.signal:libsignal-android.
+// See https://github.com/signalapp/libsignal/blob/main/swift/README.md and
+// https://github.com/signalapp/libsignal/releases/tag/v0.86.5.
+const LIBSIGNAL_IOS_VERSION = '0.86.5';
+const LIBSIGNAL_IOS_CHECKSUM =
+  'a3df979aa39b307ac4ef0f3fd59536daab5d6b3f8257c7aefe5f0470625f2582';
+
+const withSignalPod: ConfigPlugin = (config) => {
+  // LibSignalClient is a Swift pod and, per its own README, "cannot be
+  // compiled as a plain library" — the consuming app's Podfile must use
+  // use_frameworks!. This must be DYNAMIC linkage specifically: the pod's own
+  // libsignal_ffi.a (the prebuilt Rust FFI static lib fetched by its script
+  // phases) only gets linked in via its `OTHER_LDFLAGS` pod_target_xcconfig
+  // entry, which is honored by the real `clang -dynamiclib` link step a
+  // dynamic framework gets — a static framework instead builds via
+  // `libtool -static`, which ignores OTHER_LDFLAGS entirely and silently
+  // produces a LibSignalClient.framework missing all of libsignal_ffi's
+  // symbols (undefined symbols at the final app link instead).
+  config = withPodfileProperties(config, (config) => {
+    if (!config.modResults['ios.useFrameworks']) {
+      config.modResults['ios.useFrameworks'] = 'dynamic';
+    }
+    return config;
+  });
+
+  return withPodfile(config, (config) => {
+    let podfile = config.modResults.contents;
+
+    if (!podfile.includes('LibSignalClient')) {
+      podfile = podfile.replace(
+        /use_expo_modules!/,
+        `use_expo_modules!\n\n  pod 'LibSignalClient', git: 'https://github.com/signalapp/libsignal.git', tag: 'v${LIBSIGNAL_IOS_VERSION}'\n  ENV['LIBSIGNAL_FFI_PREBUILD_CHECKSUM'] = '${LIBSIGNAL_IOS_CHECKSUM}'`
+      );
+      config.modResults.contents = podfile;
+    }
+
+    return config;
+  });
+};
+
 const withExpoLibsignal: ConfigPlugin = (config) => {
   config = withSignalMavenRepo(config);
   config = withSignalCoreLibraryDesugaring(config);
+  config = withSignalPod(config);
   return config;
 };
 

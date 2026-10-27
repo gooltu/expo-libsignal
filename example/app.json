@@ -8,7 +8,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "plugins": [
-      "../app.plugin.js"
+      "../app.plugin.js",
+      "./withIOSSceneDelegate.js"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -17,7 +18,20 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "expo.modules.libsignal.example"
+      "bundleIdentifier": "expo.modules.libsignal.example",
+      "infoPlist": {
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [
+              {
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "SceneDelegate"
+              }
+            ]
+          }
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {

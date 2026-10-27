@@ -11,18 +11,6 @@ public class ExpoLibsignalModule: Module {
     return s
   }()
 
-  // libsignal's Swift API requires an explicit local ProtocolAddress for
-  // session bookkeeping (same-account detection via `is_same_account`, and
-  // address-binding in the message MAC) — a concept the Android
-  // implementation this module mirrors doesn't have at all (it uses the
-  // legacy Java protocol API, which only ever deals in remote addresses).
-  // A fixed name that can never parse as a Signal ServiceId guarantees that
-  // bookkeeping never activates, matching Android's actual behavior exactly
-  // without requiring callers to supply anything extra.
-  private func localAddress() throws -> ProtocolAddress {
-    try ProtocolAddress(name: "expo-libsignal-local", deviceId: 1)
-  }
-
   public func definition() -> ModuleDefinition {
     Name("ExpoLibsignal")
 
@@ -189,9 +177,7 @@ public class ExpoLibsignalModule: Module {
       }
 
       let remoteAddress = try ProtocolAddress(name: name, deviceId: UInt32(deviceId))
-      let localAddress  = try self.localAddress()
       try processPreKeyBundle(pkBundle, for: remoteAddress,
-                              ourAddress: localAddress,
                               sessionStore: self.store, identityStore: self.store,
                               context: NullContext())
     }
@@ -203,11 +189,9 @@ public class ExpoLibsignalModule: Module {
                       userInfo: [NSLocalizedDescriptionKey: "Invalid ProtocolAddress"])
       }
       let remoteAddress = try ProtocolAddress(name: name, deviceId: UInt32(deviceId))
-      let localAddress  = try self.localAddress()
       let ciphertext = try signalEncrypt(
         message: Array(plaintext.utf8),
         for: remoteAddress,
-        localAddress: localAddress,
         sessionStore: self.store,
         identityStore: self.store,
         context: NullContext()
@@ -231,14 +215,12 @@ public class ExpoLibsignalModule: Module {
                       userInfo: [NSLocalizedDescriptionKey: "Invalid CiphertextMessage"])
       }
       let remoteAddress = try ProtocolAddress(name: name, deviceId: UInt32(deviceId))
-      let localAddress  = try self.localAddress()
       let plaintext: Data
       switch msgType {
       case 3:
         let msg = try PreKeySignalMessage(bytes: Array(bodyData))
         plaintext = try signalDecryptPreKey(
           message: msg, from: remoteAddress,
-          localAddress: localAddress,
           sessionStore: self.store, identityStore: self.store,
           preKeyStore: self.store, signedPreKeyStore: self.store,
           kyberPreKeyStore: self.store,
@@ -248,7 +230,6 @@ public class ExpoLibsignalModule: Module {
         let msg = try SignalMessage(bytes: Array(bodyData))
         plaintext = try signalDecrypt(
           message: msg, from: remoteAddress,
-          to: localAddress,
           sessionStore: self.store, identityStore: self.store,
           context: NullContext()
         )
