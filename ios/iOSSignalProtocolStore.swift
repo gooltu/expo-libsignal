@@ -3,7 +3,7 @@ import CryptoKit
 import LibSignalClient
 import Security
 
-class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, SessionStore, KyberPreKeyStore {
+class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, SessionStore, KyberPreKeyStore, SenderKeyStore {
 
     private let defaults = UserDefaults(suiteName: "expo.libsignal.store")!
     private let masterKey: SymmetricKey
@@ -171,6 +171,20 @@ class iOSSignalProtocolStore: IdentityKeyStore, PreKeyStore, SignedPreKeyStore, 
 
     func markKyberPreKeyUsed(id: UInt32, signedPreKeyId: UInt32, baseKey: PublicKey, context: StoreContext) throws {
         defaults.removeObject(forKey: "kyber_prekey_\(id)")
+    }
+
+    // ── Sender Key Store ───────────────────────────────────────────────────
+
+    func storeSenderKey(from sender: ProtocolAddress, distributionId: UUID, record: SenderKeyRecord, context: StoreContext) throws {
+        defaults.set(try encryptData(Data(record.serialize())),
+                     forKey: "senderkey_\(sender.name)_\(sender.deviceId)_\(distributionId)")
+    }
+
+    func loadSenderKey(from sender: ProtocolAddress, distributionId: UUID, context: StoreContext) throws -> SenderKeyRecord? {
+        guard let enc = defaults.string(forKey: "senderkey_\(sender.name)_\(sender.deviceId)_\(distributionId)") else {
+            return nil
+        }
+        return try SenderKeyRecord(bytes: Array(decryptData(enc)))
     }
 
     // Helper used by hasSession

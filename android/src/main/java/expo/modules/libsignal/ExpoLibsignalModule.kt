@@ -169,12 +169,16 @@ class ExpoLibsignalModule : Module() {
         val identityKey = IdentityKey(Base64.decode(bundleObj["identityKey"] as String, Base64.NO_WRAP), 0)
 
         val signedPreKeyId = (bundleObj["signedPreKeyId"] as Double).toInt()
-        val signedPreKeyPublic = ECPublicKey.fromPublicKeyBytes(Base64.decode(bundleObj["signedPreKeyPublic"] as String, Base64.NO_WRAP))
+        // ECPublicKey.serialize() (used when these prekeys were generated) emits the
+        // full 33-byte type-prefixed form, so parse with the matching constructor —
+        // not fromPublicKeyBytes(), which expects the type byte already stripped
+        // (32 raw bytes) and throws InvalidKeyException("expected 32, was 33") here.
+        val signedPreKeyPublic = ECPublicKey(Base64.decode(bundleObj["signedPreKeyPublic"] as String, Base64.NO_WRAP))
         val signedPreKeySignature = Base64.decode(bundleObj["signedPreKeySignature"] as String, Base64.NO_WRAP)
 
         val preKeyId = if (bundleObj.containsKey("preKeyId")) (bundleObj["preKeyId"] as Double).toInt() else 0
         val preKeyPublic = if (bundleObj.containsKey("preKeyPublic")) {
-            ECPublicKey.fromPublicKeyBytes(Base64.decode(bundleObj["preKeyPublic"] as String, Base64.NO_WRAP))
+            ECPublicKey(Base64.decode(bundleObj["preKeyPublic"] as String, Base64.NO_WRAP))
         } else null
 
         val kyberPreKeyId = if (bundleObj.containsKey("kyberPreKeyId")) (bundleObj["kyberPreKeyId"] as Double).toInt() else 0

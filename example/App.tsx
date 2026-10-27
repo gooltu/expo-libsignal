@@ -1,8 +1,11 @@
+import * as Clipboard from 'expo-clipboard';
 import Libsignal from 'expo-libsignal';
 import { useState, useEffect } from 'react';
 import {
+  Platform,
   SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -11,10 +14,16 @@ import {
 } from 'react-native';
 import type { ProtocolAddress } from 'expo-libsignal';
 
+// Just a display/demo label for this app instance — doesn't need to be a
+// real UUID, and `crypto.randomUUID()` isn't available in the React Native
+// (Hermes) runtime the way it is in a browser.
+function generateLocalName(): string {
+  return `demo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function App() {
   const [localName, setLocalName] = useState('');
   const [initialized, setInitialized] = useState(false);
-  const [initError, setInitError] = useState('');
 
   const [generatedBundle, setGeneratedBundle] = useState('');
   const [bundleError, setBundleError] = useState('');
@@ -33,17 +42,12 @@ export default function App() {
   const [decryptError, setDecryptError] = useState('');
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        const name = crypto.randomUUID();
-        await Libsignal.initialize('demo-password-fixed', name, 1);
-        setLocalName(name);
-        setInitialized(true);
-      } catch (e: any) {
-        setInitError(e?.message ?? String(e));
-      }
-    };
-    init();
+    // No native "initialize" step exists on any platform — identity/session
+    // state lives entirely in native storage and is created on demand by the
+    // generate* calls below. This local name is only used to label the
+    // bundle this instance generates.
+    setLocalName(generateLocalName());
+    setInitialized(true);
   }, []);
 
   const handleGenerateBundle = async () => {
@@ -53,7 +57,8 @@ export default function App() {
       const identityKeyPair = await Libsignal.generateIdentityKeyPair();
       const registrationId = await Libsignal.generateRegistrationId();
       const preKeys = await Libsignal.generatePreKeys(1, 1);
-      const signedPreKey = await Libsignal.generateSignedPreKey(identityKeyPair, 1);
+      const signedPreKey = await Libsignal.generateSignedPreKeys(1);
+      const kyberPreKey = await Libsignal.generateKyberPreKey(1);
 
       const bundle = {
         name: localName,
@@ -65,6 +70,9 @@ export default function App() {
         signedPreKeyId: signedPreKey.id,
         signedPreKeyPublic: signedPreKey.publicKey,
         signedPreKeySignature: signedPreKey.signature,
+        kyberPreKeyId: kyberPreKey.id,
+        kyberPreKeyPublic: kyberPreKey.publicKey,
+        kyberPreKeySignature: kyberPreKey.signature,
       };
       setGeneratedBundle(JSON.stringify(bundle, null, 2));
     } catch (e: any) {
@@ -74,7 +82,7 @@ export default function App() {
 
   const handleCopy = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await Clipboard.setStringAsync(text);
     } catch {
       // Silently ignore — clipboard is non-critical
     }
@@ -124,45 +132,37 @@ export default function App() {
     try {
       const ciphertext = JSON.parse(messageToDecrypt);
       const result = await Libsignal.decryptMessage(recipientAddress, ciphertext);
-      setDecryptedMessage(
-        typeof result === 'string' ? result : new TextDecoder().decode(result as Uint8Array),
-      );
+      setDecryptedMessage(result);
     } catch (e: any) {
       setDecryptError(e?.message ?? String(e));
     }
   };
 
-  const handleErase = async () => {
-    try {
-      await Libsignal.eraseSession();
-      const newName = crypto.randomUUID();
-      await Libsignal.initialize('demo-password-fixed', newName, 1);
-      setLocalName(newName);
-      setGeneratedBundle('');
-      setBundleError('');
-      setRecipientBundleText('');
-      setSessionStatus('idle');
-      setSessionError('');
-      setRecipientAddress(null);
-      setMessageToEncrypt('');
-      setEncryptedMessage('');
-      setEncryptError('');
-      setMessageToDecrypt('');
-      setDecryptedMessage('');
-      setDecryptError('');
-    } catch (e: any) {
-      setBundleError('Erase failed: ' + (e?.message ?? String(e)));
-    }
+  // There is no native "erase everything" call on any platform (Android has
+  // none, so neither does this module) — this only resets the demo's own
+  // local state and picks a new local name. Previously-generated native keys
+  // and sessions are left in place.
+  const handleErase = () => {
+    setLocalName(generateLocalName());
+    setGeneratedBundle('');
+    setBundleError('');
+    setRecipientBundleText('');
+    setSessionStatus('idle');
+    setSessionError('');
+    setRecipientAddress(null);
+    setMessageToEncrypt('');
+    setEncryptedMessage('');
+    setEncryptError('');
+    setMessageToDecrypt('');
+    setDecryptedMessage('');
+    setDecryptError('');
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {!initialized && !initError && (
+        {!initialized && (
           <Text style={styles.statusText}>Initializing…</Text>
-        )}
-        {!!initError && (
-          <Text style={styles.errorText}>Init error: {initError}</Text>
         )}
 
         {/* Section 1: Generate Bundle */}
@@ -251,6 +251,15 @@ export default function App() {
           placeholderTextColor="#aaa"
         />
 
+        <View style={styles.row}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity onPress={() => handleCopy(encryptedMessage)} disabled={!encryptedMessage}>
+            <Text style={[styles.copyLink, !encryptedMessage && styles.disabledText]}>
+              Copy encrypted message
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.divider} />
 
         {/* Section 4: Decrypt */}
@@ -301,6 +310,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
+    // The built-in SafeAreaView doesn't account for the Android status bar;
+    // pad explicitly instead of pulling in react-native-safe-area-context.
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   },
   container: {
     flex: 1,

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android-12 (API < 31) backup exclusion rules, referenced via
+  android:fullBackupContent. Keeps this module's encrypted Signal Protocol
+  storage out of Android's auto backup — the Android Keystore entry that
+  wraps it is hardware-bound and never included in backups, so restoring
+  these SharedPreferences onto a different install/device leaves them
+  referencing a Keystore key that doesn't exist there (see
+  AndroidSignalProtocolStore.kt's self-healing fallback for the runtime side
+  of this).
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="TinkSignalStore.xml" />
+    <exclude domain="sharedpref" path="tink_prefs.xml" />
+</full-backup-content>

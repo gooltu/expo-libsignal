@@ -1,2 +1,5 @@
-<manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:fullBackupContent="@xml/expo_libsignal_backup_rules"
+        android:dataExtractionRules="@xml/expo_libsignal_data_extraction_rules" />
 </manifest>

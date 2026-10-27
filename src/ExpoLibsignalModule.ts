@@ -1,27 +1,27 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
-import {  ProtocolAddress, PreKeyBundle, IdentityKeyPair, PreKeyRecord, SignedPreKeyRecord, CiphertextMessage } from './ExpoLibsignal.types';
+import {
+  ProtocolAddress,
+  PreKeyBundle,
+  IdentityKeyPair,
+  PreKeyRecord,
+  SignedPreKeyRecord,
+  KyberPreKeyRecord,
+  CiphertextMessage,
+} from './ExpoLibsignal.types';
 
-declare class ExpoLibsignalModule extends NativeModule{
-  // PI: number;
-  // hello(): string;
-  // setValueAsync(value: string): Promise<void>;
-
+declare class ExpoLibsignalModule extends NativeModule {
   generateIdentityKeyPair(): Promise<IdentityKeyPair>;
-  generateRegistrationId(): Promise<number>;
+  generateRegistrationId(extendedRange?: boolean): Promise<number>;
   generatePreKeys(startId: number, count: number): Promise<PreKeyRecord[]>;
-  generateSignedPreKey(identityKeyPair: IdentityKeyPair, signedPreKeyId: number): Promise<SignedPreKeyRecord>;
+  generateSignedPreKeys(signedPreKeyId: number): Promise<SignedPreKeyRecord>;
+  generateKyberPreKey(kyberPreKeyId: number): Promise<KyberPreKeyRecord>;
 
-  storeIdentityKeyPair(keys: IdentityKeyPair): Promise<void>
-  storeLocalRegistrationId(id: number): Promise<void>
-  storePreKeys(keys: PreKeyRecord[]): Promise<void>
-  storeSignedPreKey(key: SignedPreKeyRecord): Promise<void>
+  hasSession(address: ProtocolAddress): Promise<boolean>;
+  processPreKeyBundle(address: ProtocolAddress, bundle: PreKeyBundle): Promise<void>;
 
-  processPreKeyBundle(address: ProtocolAddress, bundle: PreKeyBundle): Promise<void>
-
-  encryptMessage(address: ProtocolAddress, plaintext: string | Uint8Array): Promise<CiphertextMessage>;
-  decryptMessage(address: ProtocolAddress, ciphertext: CiphertextMessage): Promise<string | Uint8Array>;
-
+  encryptMessage(address: ProtocolAddress, plaintext: string): Promise<CiphertextMessage>;
+  decryptMessage(address: ProtocolAddress, ciphertext: CiphertextMessage): Promise<string>;
 }
 
 // This call loads the native module object from the JSI.

@@ -16,9 +16,10 @@ import androidx.core.content.edit
 import org.signal.libsignal.protocol.InvalidKeyIdException
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
+import java.security.GeneralSecurityException
 import java.util.UUID
 
-class AndroidSignalProtocolStore (context: Context) : SignalProtocolStore {
+class AndroidSignalProtocolStore (private val context: Context) : SignalProtocolStore {
 
     init {
         // Register Tink's standard AEAD key types (AES256-GCM, etc.)
@@ -30,6 +31,24 @@ class AndroidSignalProtocolStore (context: Context) : SignalProtocolStore {
 
     // 2. Initialize Google Tink AEAD (Authenticated Encryption with Associated Data)
     private val aead: Aead by lazy {
+        try {
+            buildKeysetAead()
+        } catch (e: GeneralSecurityException) {
+            // The Android Keystore entry wrapping this Tink keyset is gone or
+            // unusable — e.g. SharedPreferences were restored from a backup
+            // taken on a different install/device (Keystore entries are
+            // hardware-bound and are never included in Android backups, so
+            // the two end up out of sync). Everything previously encrypted
+            // under the lost key is unrecoverable regardless of what we do
+            // here, so wipe the stale keyset and the data encrypted under it,
+            // then start fresh rather than permanently crashing on launch.
+            context.getSharedPreferences("tink_prefs", Context.MODE_PRIVATE).edit { clear() }
+            prefs.edit { clear() }
+            buildKeysetAead()
+        }
+    }
+
+    private fun buildKeysetAead(): Aead =
         AndroidKeysetManager.Builder()
             .withSharedPref(context, "tink_keyset", "tink_prefs")
             .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
@@ -38,7 +57,6 @@ class AndroidSignalProtocolStore (context: Context) : SignalProtocolStore {
             .keysetHandle
             // Pass RegistryConfiguration.get() as the first argument
             .getPrimitive(RegistryConfiguration.get(), Aead::class.java)
-    }
 
     // --- ENCRYPTION HELPERS ---
 
@@ -250,27 +268,37 @@ class AndroidSignalProtocolStore (context: Context) : SignalProtocolStore {
 
     override fun containsKyberPreKey(kyberPreKeyId: Int): Boolean = prefs.contains("kyber_prekey_$kyberPreKeyId")
 
+    // Kyber prekeys are one-time keys, same as the EC one-time prekeys above —
+    // once consumed to complete a handshake, remove it so it's never reused.
     override fun markKyberPreKeyUsed(
         kyberPreKeyId: Int,
         signedPreKeyId: Int,
         baseKey: ECPublicKey
     ) {
-        TODO("Not yet implemented")
+        prefs.edit { remove("kyber_prekey_$kyberPreKeyId") }
     }
 
     override fun storeSenderKey(
-        sender: SignalProtocolAddress?,
-        distributionId: UUID?,
-        record: SenderKeyRecord?
+        sender: SignalProtocolAddress,
+        distributionId: UUID,
+        record: SenderKeyRecord
     ) {
-        TODO("Not yet implemented")
+        prefs.edit {
+            putString(
+                "senderkey_${sender.name}_${sender.deviceId}_$distributionId",
+                encryptData(record.serialize())
+            )
+        }
     }
 
     override fun loadSenderKey(
-        sender: SignalProtocolAddress?,
-        distributionId: UUID?
+        sender: SignalProtocolAddress,
+        distributionId: UUID
     ): SenderKeyRecord? {
-        return null
+        val encryptedBase64 = prefs.getString(
+            "senderkey_${sender.name}_${sender.deviceId}_$distributionId", null
+        ) ?: return null
+        return SenderKeyRecord(decryptData(encryptedBase64))
     }
 
 

@@ -38,8 +38,7 @@
   "license": "MIT",
   "homepage": "https://github.com/gooltu/expo-libsignal#readme",
   "dependencies": {
-    "@expo/config-plugins": "^55.0.8",
-    "@signalapp/libsignal-client": "^0.97.4"
+    "@expo/config-plugins": "^55.0.8"
   },
   "devDependencies": {
     "@types/react": "~19.1.1",
